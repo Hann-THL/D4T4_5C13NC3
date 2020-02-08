@@ -22,7 +22,7 @@ def faststat(df):
     print('\n'.join(stats))
 
 # TODO - change to use plotly theme
-def figure(data, title=None, xlabel=None, ylabel=None):
+def figure(data, title=None, xlabel=None, ylabel=None, hovermode='x'):
     axis_dict = dict(
         title=xlabel,
         gridcolor='rgb(159, 197, 232)'
@@ -34,10 +34,10 @@ def figure(data, title=None, xlabel=None, ylabel=None):
                     for x in range(50)}
 
     layout = go.Layout(
-    	**xaxis_kwargs,
-    	**yaxis_kwargs,
+        **xaxis_kwargs,
+        **yaxis_kwargs,
         title = title,
-        hovermode = 'x',
+        hovermode = hovermode,
         showlegend = True,
         legend_orientation = 'h',
         plot_bgcolor = 'rgba(0, 0, 0, 0)'
@@ -51,8 +51,8 @@ def update_axis(fig, axis_count, gridcolor='rgb(159, 197, 232)'):
         fig['layout'][f'xaxis{suffix}']['gridcolor'] = gridcolor
         fig['layout'][f'yaxis{suffix}']['gridcolor'] = gridcolor
 
-def plot_graph(data, title, xlabel=None, ylabel=None, generate_file=True, out_path=None, layout_width=None, layout_height=None):
-    fig = figure(data, title, xlabel, ylabel)
+def plot_graph(data, title, xlabel=None, ylabel=None, generate_file=True, out_path=None, layout_width=None, layout_height=None, hovermode='x'):
+    fig = figure(data, title, xlabel, ylabel, hovermode=hovermode)
     fig.update_layout(width=layout_width, height=layout_height)
 
     if generate_file:
@@ -143,7 +143,7 @@ def scatter(df, x_col, y_col, category_col=None, title='Scatter', out_path=None,
                 },
                 name = str(category)
             ))
-    plot_graph(data, title=title, out_path=out_path, layout_width=layout_width, layout_height=layout_height)
+    plot_graph(data, title=title, out_path=out_path, layout_width=layout_width, layout_height=layout_height, hovermode=None)
 
 def histogram(df, title='Histogram', out_path=None, layout_width=None, layout_height=None):
     data = []
