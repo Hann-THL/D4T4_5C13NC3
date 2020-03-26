@@ -66,6 +66,9 @@ def plot_subplots(data, max_col, title,
             elif col == 1:
                 row += 1
 
+        if max_col == 1:
+            row = index +1
+
         fig.add_trace(trace, row=row, col=col)
 
         # Update axis label
@@ -105,6 +108,9 @@ def datagroups_subplots(data_groups, max_col, title,
             elif col == 1:
                 row += 1
 
+        if max_col == 1:
+            row = index +1
+            
         for trace in data:
             fig.add_trace(trace, row=row, col=col)
 
