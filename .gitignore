@@ -1,0 +1,3 @@
+python/**/resources/output/
+python/**/.ipynb_checkpoints/
+python/**/*.pyc
