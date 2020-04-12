@@ -1,13 +1,14 @@
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.exceptions import NotFittedError
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.impute import SimpleImputer
 import pandas as pd
 
-class DFMinMaxScaler(BaseEstimator, TransformerMixin):
+# Reference: https://towardsdatascience.com/6-different-ways-to-compensate-for-missing-values-data-imputation-with-examples-6022d9ca0779
+class DFSimpleImputer(BaseEstimator, TransformerMixin):
     def __init__(self, columns=None, **kwargs):
         self.columns        = columns
         self.transform_cols = None
-        self.model          = MinMaxScaler(**kwargs)
+        self.model          = SimpleImputer(**kwargs)
         
     def fit(self, X, y=None):
         self.columns        = X.columns if self.columns is None else self.columns
@@ -28,12 +29,3 @@ class DFMinMaxScaler(BaseEstimator, TransformerMixin):
     def fit_transform(self, X, y=None):
         self.fit(X)
         return self.transform(X)
-    
-    def inverse_transform(self, X):
-        if self.transform_cols is None:
-            raise NotFittedError(f"This {self.__class__.__name__} instance is not fitted yet. Call 'fit' with appropriate arguments before using this estimator.")
-
-        new_X = X.copy()
-        new_X[self.transform_cols] = self.model.inverse_transform(X[self.transform_cols])
-
-        return new_X
