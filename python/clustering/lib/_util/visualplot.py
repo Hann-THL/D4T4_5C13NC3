@@ -18,23 +18,36 @@ from scipy.stats import linregress, probplot
 from scipy.cluster.hierarchy import linkage
 
 def faststat(df, max_rows=None):
+    # N/A info
     stat_df = df.isna().sum().to_frame(name='N/A Count')
-    stat_df['N/A Ratio'] = stat_df['N/A Count'] / len(df)
+    stat_df['N/A Ratio'] = np.round(stat_df['N/A Count'] / len(df), 5)
+
+    # Type info
     stat_df = stat_df.merge(df.dtypes.to_frame(name='Type'), left_index=True, right_index=True, how='left')
     
+    # Unique info
+    stat_df['Uniq. Count'] = stat_df.index.to_series().apply(lambda x: -1)
+    for x in stat_df.index:
+        stat_df.at[x, 'Uniq. Count'] = len(df[x].unique())
+    stat_df['Uniq. Ratio'] = np.round(stat_df['Uniq. Count'] / len(df), 5)
+
     default_max_rows = pd.options.display.max_rows
     pd.set_option('display.max_rows', max_rows)
     print(df.shape)
     print(stat_df)
     pd.set_option('display.max_rows', default_max_rows)
 
-def value_count(df, column):
+def value_count(df, column, max_rows=None):
     count_df = df[column].value_counts().to_frame(name='Count')
     ratio_df = df[column].value_counts(normalize=True).to_frame(name='Ratio')
     stat_df  = count_df.merge(ratio_df, left_index=True, right_index=True, how='left')
     stat_df.index.name = column
     
+    default_max_rows = pd.options.display.max_rows
+    pd.set_option('display.max_rows', max_rows)
+    print(f'Unique: {len(stat_df) :,}')
     print(stat_df)
+    pd.set_option('display.max_rows', default_max_rows)
 
 def generate_plot(fig, out_path=None, out_filename=None, to_image=False):
     if out_path is None or out_filename is None:
@@ -136,7 +149,7 @@ def datagroups_subplots(data_groups, max_col, title,
 # BASIC
 def histogram(df, title='Histogram',
               out_path=None, max_col=2, layout_kwargs={}, to_image=False,
-              bin_algo='default'):
+              bin_algo='default', str_length=None, hidden_char='..'):
 
     bin_algos = ['default', 'count', 'width']
     assert bin_algo in bin_algos, f'bin_algo not in valid list: {bin_algos}'
@@ -159,8 +172,13 @@ def histogram(df, title='Histogram',
             nbinsx = None
             xbins  = None
 
+        x = df[column].copy()
+        if x.dtype == object:
+            x = x.sort_values()
+            x = np.where(x.str.len() > str_length, x.str.slice(stop=str_length).str.strip() + hidden_char, x)
+
         data.append(go.Histogram(
-            x=df[column].sort_values(),
+            x=x,
             name=column,
             showlegend=False,
             nbinsx=nbinsx,
@@ -301,7 +319,7 @@ def prob(df, title='Probability',
     
     columns     = df.select_dtypes(include='number')
     data_groups = []
-    colors       = DEFAULT_PLOTLY_COLORS
+    colors      = DEFAULT_PLOTLY_COLORS
 
     for column in columns:
         (osm, osr), (slope, intercept, r) = probplot(df[column])
@@ -332,17 +350,29 @@ def prob(df, title='Probability',
 
 def line(df, xy_tuples, title='Line',
          out_path=None, max_col=2, layout_kwargs={}, to_image=False,
-         line_kwargs={}):
+         line_kwargs={}, scattergl=False):
     
     data_groups = []
-    
+    colors      = DEFAULT_PLOTLY_COLORS
+
     for index, (x, y) in enumerate(xy_tuples):
-        fig = px.line(df, x=x, y=y, **line_kwargs)
-        
-        if index != 0:
-            for data in fig['data']:
-                data['showlegend'] = False
-        data_groups.append(fig['data'])
+        if scattergl:
+            data = []
+            data.append(go.Scattergl(
+                x=df[x].values,
+                y=df[y].values,
+                showlegend=False,
+                marker={'color': colors[0]},
+                **line_kwargs
+            ))
+            data_groups.append(data)
+
+        else:
+            fig = px.line(df, x=x, y=y, **line_kwargs)
+            if index != 0:
+                for data in fig['data']:
+                    data['showlegend'] = False
+            data_groups.append(fig['data'])
 
     datagroups_subplots(data_groups, max_col=max_col, title=title, out_path=out_path,
                         xaxis_titles=[xy[0] for xy in xy_tuples],
