@@ -3,36 +3,58 @@ import lib._util.fileproc as fp
 # Plotly
 import plotly.io as pio
 import plotly.express as px
+import plotly.figure_factory as ff
 import plotly.graph_objects as go
 from plotly.colors import DEFAULT_PLOTLY_COLORS
 from plotly.subplots import make_subplots
 from plotly.offline import init_notebook_mode, iplot, plot
-init_notebook_mode(connected=True)
+# init_notebook_mode(connected=True)
 pio.templates.default = 'seaborn'
 
 import pandas as pd
 import numpy as np
+
+# Stats Models
 import statsmodels.api as sm
+from statsmodels.tsa.stattools import acf
+
+# Scipy
 from scipy.stats import linregress, probplot
+from scipy.cluster.hierarchy import linkage
+
+
 
 def faststat(df, max_rows=None):
+    # N/A info
     stat_df = df.isna().sum().to_frame(name='N/A Count')
-    stat_df['N/A Ratio'] = stat_df['N/A Count'] / len(df)
+    stat_df['N/A Ratio'] = np.round(stat_df['N/A Count'] / len(df), 5)
+
+    # Type info
     stat_df = stat_df.merge(df.dtypes.to_frame(name='Type'), left_index=True, right_index=True, how='left')
     
+    # Unique info
+    stat_df['Uniq. Count'] = stat_df.index.to_series().apply(lambda x: -1)
+    for x in stat_df.index:
+        stat_df.at[x, 'Uniq. Count'] = len(df[x].unique())
+    stat_df['Uniq. Ratio'] = np.round(stat_df['Uniq. Count'] / len(df), 5)
+
     default_max_rows = pd.options.display.max_rows
     pd.set_option('display.max_rows', max_rows)
     print(df.shape)
     print(stat_df)
     pd.set_option('display.max_rows', default_max_rows)
 
-def value_count(df, column):
+def value_count(df, column, max_rows=None):
     count_df = df[column].value_counts().to_frame(name='Count')
     ratio_df = df[column].value_counts(normalize=True).to_frame(name='Ratio')
     stat_df  = count_df.merge(ratio_df, left_index=True, right_index=True, how='left')
     stat_df.index.name = column
     
+    default_max_rows = pd.options.display.max_rows
+    pd.set_option('display.max_rows', max_rows)
+    print(f'Unique: {len(stat_df) :,}')
     print(stat_df)
+    pd.set_option('display.max_rows', default_max_rows)
 
 def generate_plot(fig, out_path=None, out_filename=None, to_image=False):
     if out_path is None or out_filename is None:
@@ -52,10 +74,11 @@ def generate_plot(fig, out_path=None, out_filename=None, to_image=False):
 
 def plot_subplots(data, max_col, title,
                   out_path=None, to_image=False,
-                  layout_kwargs={}, xaxis_titles=[], yaxis_titles=[], subplot_titles=None):
+                  layout_kwargs={}, xaxis_titles=[], yaxis_titles=[],
+                  subplot_kwargs={}):
 
     max_row = int(np.ceil(len(data) / max_col))
-    fig     = make_subplots(rows=max_row, cols=max_col, subplot_titles=subplot_titles)
+    fig     = make_subplots(rows=max_row, cols=max_col, **subplot_kwargs)
     
     for index, trace in enumerate(data):
         col = index +1
@@ -91,10 +114,11 @@ def plot_subplots(data, max_col, title,
 
 def datagroups_subplots(data_groups, max_col, title,
                         out_path=None, to_image=False,
-                        layout_kwargs={}, xaxis_titles=[], yaxis_titles=[], subplot_titles=None):
+                        layout_kwargs={}, xaxis_titles=[], yaxis_titles=[],
+                        subplot_kwargs={}):
 
     max_row = int(np.ceil(len(data_groups) / max_col))
-    fig     = make_subplots(rows=max_row, cols=max_col, subplot_titles=subplot_titles)
+    fig     = make_subplots(rows=max_row, cols=max_col, **subplot_kwargs)
 
     for index, data in enumerate(data_groups):
         col = index +1
@@ -129,9 +153,12 @@ def datagroups_subplots(data_groups, max_col, title,
 
     generate_plot(fig, out_path=out_path, out_filename=title, to_image=to_image)
 
+
+
+# BASIC
 def histogram(df, title='Histogram',
               out_path=None, max_col=2, layout_kwargs={}, to_image=False,
-              bin_algo='default'):
+              bin_algo='default', str_length=None, hidden_char='..'):
 
     bin_algos = ['default', 'count', 'width']
     assert bin_algo in bin_algos, f'bin_algo not in valid list: {bin_algos}'
@@ -154,8 +181,13 @@ def histogram(df, title='Histogram',
             nbinsx = None
             xbins  = None
 
+        x = df[column].copy()
+        if x.dtype == object:
+            x = x.sort_values()
+            x = np.where(x.str.len() > str_length, x.str.slice(stop=str_length).str.strip() + hidden_char, x)
+
         data.append(go.Histogram(
-            x=df[column].sort_values(),
+            x=x,
             name=column,
             showlegend=False,
             nbinsx=nbinsx,
@@ -251,34 +283,34 @@ def box_categorical(df, y, title='Box',
                         yaxis_titles=[y if i % max_col == 0 else None for i,_ in enumerate(columns)],
                         layout_kwargs=layout_kwargs, to_image=to_image)
 
-def bar_mean_median(df, y, title='Bar - Mean-Median',
-                    out_path=None, max_col=2, layout_kwargs={}, to_image=False):
+def meandist(df, y, title='Mean Distribution',
+             out_path=None, max_col=2, layout_kwargs={}, to_image=False):
 
     columns = df.select_dtypes(include='object')
     columns = [x for x in columns if x != y]
 
-    data_groups  = []
-    stats        = ['mean', 'median']
-    mean, median = df[y].mean(), df[y].median()
-    colors       = DEFAULT_PLOTLY_COLORS
+    data_groups = []
+    stats       = ['mean', 'count']
+    mean        = df[y].mean()
+    colors      = DEFAULT_PLOTLY_COLORS
 
     for column in columns:
         stat_df = df.groupby(column).agg(
             mean=(y, 'mean'),
-            median=(y, 'median')
+            count=(y, 'count')
         ).reset_index()
 
         for stat in stats:
             data = []
             data.append(go.Bar(
-                x=stat_df.sort_values(by=stat)[column],
+                x=stat_df.sort_values(by='mean')[column],
                 y=stat_df.sort_values(by=stat)[stat],
                 showlegend=False,
                 marker={'color': colors[0]}
             ))
             data.append(go.Scattergl(
                 x=stat_df.sort_values(by=stat)[column],
-                y=[mean if stat == 'mean' else median for x in range(len(stat_df))],
+                y=[mean if stat == 'mean' else None for x in range(len(stat_df))],
                 showlegend=False,
                 marker={'color': 'red'},
                 mode='lines',
@@ -296,7 +328,7 @@ def prob(df, title='Probability',
     
     columns     = df.select_dtypes(include='number')
     data_groups = []
-    colors       = DEFAULT_PLOTLY_COLORS
+    colors      = DEFAULT_PLOTLY_COLORS
 
     for column in columns:
         (osm, osr), (slope, intercept, r) = probplot(df[column])
@@ -322,9 +354,40 @@ def prob(df, title='Probability',
     datagroups_subplots(data_groups, max_col=max_col, title=title, out_path=out_path,
                         xaxis_titles=['Theoretical Quantiles' for _ in columns],
                         yaxis_titles=['Ordered Values' if i % max_col == 0 else None for i,_ in enumerate(columns)],
-                        subplot_titles=list(columns),
+                        subplot_kwargs={'subplot_titles': list(columns)},
                         layout_kwargs=layout_kwargs, to_image=to_image)
 
+def line(df, xy_tuples, title='Line',
+         out_path=None, max_col=2, layout_kwargs={}, to_image=False,
+         line_kwargs={}, scattergl=False):
+    
+    data_groups = []
+    colors      = DEFAULT_PLOTLY_COLORS
+
+    for index, (x, y) in enumerate(xy_tuples):
+        if scattergl:
+            data = []
+            data.append(go.Scattergl(
+                x=df[x].values,
+                y=df[y].values,
+                showlegend=False,
+                marker={'color': colors[0]},
+                **line_kwargs
+            ))
+            data_groups.append(data)
+
+        else:
+            fig = px.line(df, x=x, y=y, **line_kwargs)
+            if index != 0:
+                for data in fig['data']:
+                    data['showlegend'] = False
+            data_groups.append(fig['data'])
+
+    datagroups_subplots(data_groups, max_col=max_col, title=title, out_path=out_path,
+                        xaxis_titles=[xy[0] for xy in xy_tuples],
+                        yaxis_titles=[xy[1] for xy in xy_tuples],
+                        layout_kwargs=layout_kwargs, to_image=to_image)
+    
 def scatter(df, xy_tuples, title='Scatter', color=None,
             out_path=None, max_col=2, layout_kwargs={}, to_image=False,
             scatter_kwargs={}):
@@ -354,7 +417,7 @@ def scatter(df, xy_tuples, title='Scatter', color=None,
     datagroups_subplots(data_groups, max_col=max_col, title=title, out_path=out_path,
                         xaxis_titles=[xy[0] for xy in xy_tuples],
                         yaxis_titles=[xy[1] for xy in xy_tuples],
-                        subplot_titles=subplot_titles,
+                        subplot_kwargs={'subplot_titles': subplot_titles},
                         layout_kwargs=layout_kwargs, to_image=to_image)
 
 def pair(df, title='Pair', color=None,
@@ -412,3 +475,174 @@ def corrmat(df, title='Correlation Matrix',
         out_path=out_path,
         to_image=to_image
     )
+
+def distmat(df, target, title='Distribution Matrix',
+            out_path=None, layout_kwargs={}, to_image=False,
+            heatmap_kwargs={}):
+    
+    columns = df.select_dtypes(include='object')
+    columns = [x for x in columns if x != target]
+
+    dist_dfs = []
+    for column in columns:
+        dist_df = pd.crosstab(index=df[column], columns=df[target])
+        dist_df['DISTMAT_TOTAL'] = dist_df.sum(axis=1)
+        dist_df = pd.concat([(dist_df[x] / dist_df['DISTMAT_TOTAL']).to_frame(name=x) for x in dist_df.columns if x != 'DISTMAT_TOTAL'], axis=1)
+        dist_df.index = f'{column}_' + dist_df.index
+        dist_dfs.append(dist_df)
+
+    dist_df = pd.concat(dist_dfs)
+    heatmap(
+        x=dist_df.columns,
+        y=dist_df.index,
+        z=dist_df.values,
+        layout_kwargs=layout_kwargs,
+        heatmap_kwargs=heatmap_kwargs,
+        title=title,
+        out_path=out_path,
+        to_image=to_image
+    )
+
+# Reference: https://stackoverflow.com/questions/38452379/plotting-a-dendrogram-using-plotly-python
+def dendrogram(df, title='Dendrogram',
+               out_path=None, layout_kwargs={}, to_image=False):
+
+    fig = ff.create_dendrogram(df, linkagefun=lambda x: linkage(df, method='ward', metric='euclidean'))
+
+    layout_kwargs['title'] = title
+    fig.update_layout(**layout_kwargs)
+
+    generate_plot(fig, out_path=out_path, out_filename=title, to_image=to_image)
+
+
+
+# AUDIO PROCESSING
+def wave(df, amplitude, title='Wave',
+         out_path=None, max_col=2, layout_kwargs={}, to_image=False):
+    
+    new_df = df.copy()
+    new_df.rename(columns={amplitude: 'WAVE_AMPLITUDE'}, inplace=True)
+
+    data_groups = []
+    for row in new_df.itertuples():
+        tmp_df = pd.DataFrame({
+            'WAVE_AMPLITUDE': row.WAVE_AMPLITUDE
+        })
+        
+        fig = px.line(tmp_df, y='WAVE_AMPLITUDE')
+        data_groups.append(fig['data'])
+
+    xaxis_titles = 'Time (' + (new_df['rate'].astype(int).astype(str) + ' Hz/s').values + ')' \
+                   if 'rate' in new_df.columns else ['Time' for _ in new_df.index]
+    yaxis_titles = ['Amplitude' if i % max_col == 0 else '' for i,_ in enumerate(new_df.index)]
+
+    datagroups_subplots(data_groups, max_col=max_col, title=title, out_path=out_path,
+                        subplot_kwargs={'subplot_titles': new_df.index},
+                        xaxis_titles=xaxis_titles,
+                        yaxis_titles=yaxis_titles,
+                        layout_kwargs=layout_kwargs, to_image=to_image)
+
+def fourier(df, frequency, magnitude, title='FT', x_title='Frequency',
+            out_path=None, max_col=2, layout_kwargs={}, to_image=False):
+    
+    new_df = df.copy()
+    new_df.rename(columns={
+        frequency: 'FT_FREQUENCY',
+        magnitude: 'FT_MAGNITUDE'
+    }, inplace=True)
+
+    data_groups = []
+    for row in new_df.itertuples():
+        tmp_df = pd.DataFrame({
+            'FT_FREQUENCY': row.FT_FREQUENCY,
+            'FT_MAGNITUDE': row.FT_MAGNITUDE
+        })
+        
+        fig = px.line(tmp_df, x='FT_FREQUENCY', y='FT_MAGNITUDE')
+        data_groups.append(fig['data'])
+
+    xaxis_titles = [x_title for _ in new_df.index]
+    yaxis_titles = ['Magnitude' if i % max_col == 0 else '' for i,_ in enumerate(new_df.index)]
+
+    datagroups_subplots(data_groups, max_col=max_col, title=title, out_path=out_path,
+                        subplot_kwargs={'subplot_titles': new_df.index},
+                        xaxis_titles=xaxis_titles,
+                        yaxis_titles=yaxis_titles,
+                        layout_kwargs=layout_kwargs, to_image=to_image)
+
+def spectogram(df, z, title='Spectogram', y_title='Frequency',
+               out_path=None, max_col=2, layout_kwargs={}, to_image=False):
+    
+    new_df = df.copy()
+    new_df.rename(columns={z: 'SPECTOGRAM_Z'}, inplace=True)
+
+    data_groups = []
+    for row in new_df.itertuples():
+        data = go.Heatmap(
+            z=row.SPECTOGRAM_Z,
+            showscale=False
+        )
+        fig = go.Figure(data=data)
+
+        data_groups.append(fig['data'])
+
+    xaxis_titles = ['Time' for _ in new_df.index]
+    yaxis_titles = [y_title if i % max_col == 0 else '' for i,_ in enumerate(new_df.index)]
+
+    datagroups_subplots(data_groups, max_col=max_col, title=title, out_path=out_path,
+                        subplot_kwargs={'subplot_titles': new_df.index},
+                        xaxis_titles=xaxis_titles,
+                        yaxis_titles=yaxis_titles,
+                        layout_kwargs=layout_kwargs, to_image=to_image)
+
+
+
+# TIME SERIES
+def autocorr(df, title='Autocorrelation',
+             out_path=None, max_col=2, layout_kwargs={}, to_image=False,
+             line_kwargs={}, scattergl=False):
+    
+    columns = df.select_dtypes(include='number').columns
+    nlags   = len(df) -1
+    autocorr_dict = {
+        'Lag': [x for x in range(nlags +1)]
+    }
+
+    for column in columns:
+        autocorr_dict[f'Autocorr. ({column})'] = acf(df[column], nlags=nlags, fft=False)
+    autocorr_df = pd.DataFrame(autocorr_dict)
+
+    line(autocorr_df,
+         xy_tuples=[('Lag', x) for x in autocorr_df.columns if x != 'Lag'],
+         title=title,
+         out_path=out_path,
+         max_col=max_col,
+         layout_kwargs=layout_kwargs,
+         to_image=to_image,
+         line_kwargs=line_kwargs,
+         scattergl=scattergl)
+
+# Reference: https://www.itl.nist.gov/div898/handbook/eda/section3/lagplot.htm
+def lag(df, lag=1, title='Lag',
+        out_path=None, max_col=2, layout_kwargs={}, to_image=False,
+        scatter_kwargs={}):
+
+    max_lag = len(df) -1
+    assert lag >= 1 and lag <= max_lag, f'lag is out of range. (1 - {max_lag})'
+
+    lag_df = df.select_dtypes(include='number')
+    lag_df = lag_df.merge(lag_df.shift(-lag), left_index=True, right_index=True, how='left')
+
+    t_dict  = {x: x.replace('_x', ' (t)') for x in lag_df.columns if x.endswith('_x')}
+    t1_dict = {x: x.replace('_y', ' (t+1)') for x in lag_df.columns if x.endswith('_y')}
+    lag_df.rename(columns={**t_dict, **t1_dict}, inplace=True)
+    lag_df.dropna(inplace=True)
+
+    scatter(lag_df,
+            xy_tuples=[(x, list(t1_dict.values())[i]) for i,x in enumerate(t_dict.values())],
+            title=title,
+            out_path=out_path,
+            max_col=max_col,
+            layout_kwargs=layout_kwargs,
+            to_image=to_image,
+            scatter_kwargs=scatter_kwargs)
