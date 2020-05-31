@@ -1,11 +1,11 @@
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.exceptions import NotFittedError
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import StandardScaler
 
-class DFMinMaxScaler(BaseEstimator, TransformerMixin):
+class DFStandardScaler(BaseEstimator, TransformerMixin):
     def __init__(self, columns=None, **kwargs):
         self.columns        = columns
-        self.model          = MinMaxScaler(**kwargs)
+        self.model          = StandardScaler(**kwargs)
         self.transform_cols = None
         
     def fit(self, X, y=None):
