@@ -26,16 +26,13 @@ def dataset_split(X, y, reset_index=True, **kwargs):
 
 
 # EVALUATION
-def eval_classif(y_true, y_pred, multi_class='raise', return_evaluation=False):
+def eval_classif(y_true, y_pred, y_prob=None, multi_class='raise', return_evaluation=False):
     cofmat_df = pd.DataFrame(confusion_matrix(y_true, y_pred))
     cofmat_df.index.name   = 'True'
     cofmat_df.columns.name = 'Pred'
 
-    roc_auc = roc_auc_score(
-        pd.get_dummies(y_true) if multi_class in ['ovr', 'ovo'] else y_true,
-        pd.get_dummies(y_pred) if multi_class in ['ovr', 'ovo'] else y_pred,
-        multi_class=multi_class
-    )
+    y_prob  = y_pred if y_prob is None else y_prob
+    roc_auc = roc_auc_score(y_true, y_prob, multi_class=multi_class)
     kappa   = cohen_kappa_score(y_true, y_pred)
 
     print(cofmat_df)
