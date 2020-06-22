@@ -232,13 +232,14 @@ def kde(df, title='KDE', color=None,
                         layout_kwargs=layout_kwargs, to_image=to_image)
 
 def box(df, title='Box', color=None,
-        out_path=None, max_col=2, layout_kwargs={}, to_image=False):
+        out_path=None, max_col=2, layout_kwargs={}, to_image=False,
+        box_kwargs={}):
 
     columns = df.select_dtypes(include='number')
     columns = [x for x in columns if x != color]
 
     data_groups = []
-    groups      = [1] if color is None else np.unique(df[color])
+    groups      = [1] if color is None else df[color].unique()
 
     for column in columns:
         data   = []
@@ -248,7 +249,8 @@ def box(df, title='Box', color=None,
             data.append(go.Box(
                 y=df[column] if color is None else df[df[color] == group][column],
                 name=column if color is None else group,
-                marker={'color': colors[index % len(colors)]}
+                marker={'color': colors[index % len(colors)]},
+                **box_kwargs
             ))
         data_groups.append(data)
 
