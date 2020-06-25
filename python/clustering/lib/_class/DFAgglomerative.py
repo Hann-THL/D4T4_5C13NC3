@@ -8,7 +8,7 @@ import numpy as np
 import copy
 
 class DFAgglomerative(BaseEstimator, ClusterMixin):
-    def __init__(self, cluster_name, columns=None, random_state=None,
+    def __init__(self, cluster_name='Agglo', columns=None, random_state=None,
                  eval_silhouette=False, eval_chi=False, eval_dbi=False,
                  **kwargs):
         self.cluster_name    = cluster_name
