@@ -93,6 +93,9 @@ def plot_subplots(data, max_col, title,
             elif col == 1:
                 row += 1
 
+        if max_col == 1:
+            row = index +1
+
         fig.add_trace(trace, row=row, col=col)
 
         # Update axis label
@@ -132,6 +135,9 @@ def datagroups_subplots(data_groups, max_col, title,
                 col = max_col
             elif col == 1:
                 row += 1
+
+        if max_col == 1:
+            row = index +1
 
         for trace in data:
             fig.add_trace(trace, row=row, col=col)
@@ -503,6 +509,21 @@ def distmat(df, target, title='Distribution Matrix',
         heatmap_kwargs=heatmap_kwargs,
         title=title,
         out_path=out_path,
+        to_image=to_image
+    )
+
+def missmat(df, title='Missing Matrix',
+            out_path=None, layout_kwargs={}, to_image=False):
+    
+    missing_df = df.isna().astype(int)
+    
+    vp.heatmap(
+        x=missing_df.columns,
+        y=missing_df.index,
+        z=missing_df.values,
+        title=title,
+        out_path=out_path,
+        layout_kwargs=layout_kwargs,
         to_image=to_image
     )
 
