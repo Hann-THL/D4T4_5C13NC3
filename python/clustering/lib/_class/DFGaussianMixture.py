@@ -3,43 +3,33 @@ from sklearn.exceptions import NotFittedError
 from sklearn.mixture import GaussianMixture
 from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bouldin_score
 from scipy.stats import multivariate_normal
+from tqdm import tqdm
 import pandas as pd
 import numpy as np
 import copy
 
 class DFGaussianMixture(BaseEstimator, ClusterMixin):
     def __init__(self, cluster_name='GMM', columns=None,
-                 eval_aic=False, eval_bic=False, eval_silhouette=False, eval_chi=False, eval_dbi=False,
+                 eval_aic=False, eval_bic=False, eval_silhouette=False, eval_chi=False, eval_dbi=False, eval_sample_size=None,
                  **kwargs):
-        self.cluster_name    = cluster_name
-        self.columns         = columns
-        self.model           = GaussianMixture(**kwargs)
-        self.eval_aic        = eval_aic
-        self.eval_bic        = eval_bic
-        self.eval_silhouette = eval_silhouette
-        self.eval_chi        = eval_chi
-        self.eval_dbi        = eval_dbi
-        self.transform_cols  = None
-        self.eval_df         = None
+        self.cluster_name     = cluster_name
+        self.columns          = columns
+        self.model            = GaussianMixture(**kwargs)
+        self.eval_aic         = eval_aic
+        self.eval_bic         = eval_bic
+        self.eval_silhouette  = eval_silhouette
+        self.eval_chi         = eval_chi
+        self.eval_dbi         = eval_dbi
+        self.eval_sample_size = eval_sample_size
+        self.transform_cols   = None
+        self.eval_df          = None
+        self.centroid_df      = None
         
     def fit(self, X, y=None):
         self.columns        = X.columns if self.columns is None else self.columns
         self.transform_cols = [x for x in X.columns if x in self.columns]
-        self.model.fit(X[self.transform_cols])
-
-        self.centroid_df    = pd.DataFrame(
-            self.__calc_centroids(self.model, X[self.transform_cols]),
-            columns=self.transform_cols
-        )
-        self.centroid_df['Cluster'] = [f'Cluster {x}' for x in self.centroid_df.index]
-        self.centroid_df.set_index('Cluster', inplace=True)
-        self.centroid_df.index.name = None
 
         # Evaluation
-        self.eval_df = pd.DataFrame({
-            'n_cluster': [x+1 for x in range(self.model.n_components)]
-        })
-
         if any([self.eval_aic, self.eval_bic, self.eval_silhouette, self.eval_chi, self.eval_dbi]):
             aics        = []
             bics        = []
@@ -47,11 +37,14 @@ class DFGaussianMixture(BaseEstimator, ClusterMixin):
             chis        = []
             dbis        = []
 
+            self.eval_df = pd.DataFrame({
+                'n_cluster': [x+1 for x in range(self.model.n_components)]
+            })
             self.eval_df['centroid']  = self.eval_df['n_cluster'].apply(lambda x: [])
             self.eval_df['converged'] = [None for _ in range(self.model.n_components)]
 
             tmp_X = X[self.transform_cols].copy()
-            for x in range(self.model.n_components):
+            for x in tqdm(range(self.model.n_components)):
                 model = copy.deepcopy(self.model)
                 model.n_components = x+1
                 model.fit(tmp_X)
@@ -70,7 +63,7 @@ class DFGaussianMixture(BaseEstimator, ClusterMixin):
 
                 # Reference: https://towardsdatascience.com/clustering-metrics-better-than-the-elbow-method-6926e1f723a6
                 if self.eval_silhouette:
-                    silhouettes.append(np.nan if x == 0 else silhouette_score(tmp_X, model.predict(tmp_X), metric='euclidean', random_state=model.random_state))
+                    silhouettes.append(np.nan if x == 0 else silhouette_score(tmp_X, model.predict(tmp_X), sample_size=self.eval_sample_size, metric='euclidean', random_state=model.random_state))
 
                 # Reference: https://stats.stackexchange.com/questions/52838/what-is-an-acceptable-value-of-the-calinski-harabasz-ch-criterion
                 if self.eval_chi:
@@ -94,6 +87,18 @@ class DFGaussianMixture(BaseEstimator, ClusterMixin):
 
             if self.eval_dbi:
                 self.eval_df['davies_bouldin'] = dbis
+
+        # Train
+        else:
+            self.model.fit(X[self.transform_cols])
+
+            self.centroid_df = pd.DataFrame(
+                self.__calc_centroids(self.model, X[self.transform_cols]),
+                columns=self.transform_cols
+            )
+            self.centroid_df['Cluster'] = [f'Cluster {x}' for x in self.centroid_df.index]
+            self.centroid_df.set_index('Cluster', inplace=True)
+            self.centroid_df.index.name = None
 
         return self
     
